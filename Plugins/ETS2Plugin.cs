@@ -12,8 +12,15 @@ namespace SHALLControl.Plugins
     /// Euro Truck Simulator 2 plugin.
     /// Requires "ETS2 Telemetry Server" (by Funbit) running at localhost:25555.
     /// Download: https://github.com/Funbit/ets2-telemetry-server/releases
-    /// It auto-installs the SCS SDK plugin into ETS2 and exposes:
-    ///   GET http://localhost:25555/api/ets2/telemetry  → JSON
+    /// API: GET http://localhost:25555/api/ets2/telemetry → JSON
+    ///
+    /// Key JSON structure (nested):
+    ///   truck.speed             → km/h
+    ///   truck.gameSteer         → -1..1
+    ///   truck.acceleration.x    → lateral G
+    ///   truck.acceleration.z    → longitudinal G
+    ///   truck.placement.pitch   → radians
+    ///   truck.placement.roll    → radians
     /// </summary>
     public class ETS2Plugin : IGamePlugin
     {
@@ -73,18 +80,52 @@ namespace SHALLControl.Plugins
                 return reader.ReadToEnd();
         }
 
-        // Minimal JSON key extraction (no external libraries)
+        // ── JSON helpers for the Funbit nested structure ────────────────
+
+        /// <summary>Find a flat key like "speed": anywhere in json.</summary>
         private float JsonFloat(string json, string key, float def = 0)
         {
             string search = "\"" + key + "\":";
             int idx = json.IndexOf(search, StringComparison.OrdinalIgnoreCase);
             if (idx < 0) return def;
             idx += search.Length;
+            return ParseNumberAt(json, idx, def);
+        }
+
+        /// <summary>Find a nested key: first locate parent object, then child key inside it.</summary>
+        private float JsonNested(string json, string parent, string child, float def = 0)
+        {
+            // Find "parent":{
+            string search = "\"" + parent + "\"";
+            int pIdx = json.IndexOf(search, StringComparison.OrdinalIgnoreCase);
+            if (pIdx < 0) return def;
+
+            // Find the opening brace after parent key
+            int braceIdx = json.IndexOf('{', pIdx + search.Length);
+            if (braceIdx < 0) return def;
+
+            // Find the closing brace to limit search scope
+            int closeBrace = json.IndexOf('}', braceIdx);
+            if (closeBrace < 0) closeBrace = json.Length;
+
+            // Now find "child": within that scope
+            string childSearch = "\"" + child + "\":";
+            int cIdx = json.IndexOf(childSearch, braceIdx, closeBrace - braceIdx, StringComparison.OrdinalIgnoreCase);
+            if (cIdx < 0) return def;
+
+            return ParseNumberAt(json, cIdx + childSearch.Length, def);
+        }
+
+        private float ParseNumberAt(string json, int idx, float def)
+        {
             while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t')) idx++;
             int end = idx;
             while (end < json.Length && (char.IsDigit(json[end]) || json[end] == '-' || json[end] == '.' || json[end] == 'e' || json[end] == 'E' || json[end] == '+')) end++;
             if (end == idx) return def;
-            return float.TryParse(json.Substring(idx, end - idx), out float v) ? v : def;
+            return float.TryParse(json.Substring(idx, end - idx),
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture,
+                out float v) ? v : def;
         }
 
         private bool JsonBool(string json, string key)
@@ -100,10 +141,17 @@ namespace SHALLControl.Plugins
             bool connected = JsonBool(json, "connected");
             if (!connected) return null;
 
-            float speed    = JsonFloat(json, "speed");        // km/h
-            float accelX   = JsonFloat(json, "accelerationX"); // lateral
-            float accelZ   = JsonFloat(json, "accelerationZ"); // longitudinal
-            float steer    = JsonFloat(json, "gameSteer");    // -1 to 1
+            // ── Flat keys from truck object ─────────────────────────────
+            float speed    = JsonFloat(json, "speed");         // km/h
+            float steer    = JsonFloat(json, "gameSteer");     // -1 to 1
+
+            // ── Nested: truck.acceleration.{x,z} ───────────────────────
+            float accelX   = JsonNested(json, "acceleration", "x");  // lateral G
+            float accelZ   = JsonNested(json, "acceleration", "z");  // longitudinal G
+
+            // ── Nested: truck.placement.{pitch, roll} ──────────────────
+            float placePitch = JsonNested(json, "placement", "pitch");  // radians
+            float placeRoll  = JsonNested(json, "placement", "roll");   // radians
 
             float speedDelta = speed - _lastSpeed;
             _lastSpeed = speed;
@@ -119,12 +167,17 @@ namespace SHALLControl.Plugins
                 };
             }
 
-            // Axes NEGATED to correct inversion
+            // Combine acceleration + placement for better feel
+            // placement.roll is in radians (typically -0.05 to 0.05),
+            // acceleration.x is lateral G (typically -2 to 2)
+            float rollDeg  = (float)(placeRoll * 180.0 / Math.PI);
+            float pitchDeg = (float)(placePitch * 180.0 / Math.PI);
+
             return new TelemetryData
             {
-                Pitch  = -speedDelta * 3f,          // braking = tilt forward (not back)
-                Roll   = -accelX * 8f,              // left turn = lean left (not right)
-                Yaw    = -steer * 5f,               // steer left = rotate left
+                Pitch  = -(speedDelta * 2f + pitchDeg * 0.5f),  // brake/accel + road slope
+                Roll   = -(accelX * 6f + rollDeg * 2f),          // lateral G + body lean
+                Yaw    = -steer * 5f,                             // steering wheel
                 Surge  = accelZ,
                 Sway   = accelX,
                 Speed  = absSpeed,
