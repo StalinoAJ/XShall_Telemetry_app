@@ -1,0 +1,6 @@
+D:\Gaming Chair\bin\Release\SHALLControl.exe
+D:\Gaming Chair\bin\Release\SHALLControl.pdb
+D:\Gaming Chair\obj\Release\SHALLControl.csproj.AssemblyReference.cache
+D:\Gaming Chair\obj\Release\SHALLControl.csproj.CoreCompileInputs.cache
+D:\Gaming Chair\obj\Release\SHALLControl.exe
+D:\Gaming Chair\obj\Release\SHALLControl.pdb
