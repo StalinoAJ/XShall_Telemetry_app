@@ -95,10 +95,10 @@ namespace SHALLControl.Plugins
                 : (speed - DEADZONE) / (FADE_END - DEADZONE);
 
             // ── Use acceleration (G-forces) instead of raw orientation ──
-            // This way the seat responds to driving forces, not terrain slope
-            float seatPitch = accelZ * 3f * speedFactor;   // braking/accel → pitch
-            float seatRoll  = accelX * 4f * speedFactor;   // cornering → roll
-            float seatYaw   = angVelY * 8f * speedFactor;  // steering → yaw
+            // Pitch negated (braking = tilt forward), reduced multipliers for smoother feel
+            float seatPitch = -accelZ * 1.5f * speedFactor;  // braking/accel → pitch (inverted)
+            float seatRoll  =  accelX * 2f   * speedFactor;  // cornering → roll (gentler)
+            float seatYaw   =  angVelY * 5f  * speedFactor;  // steering → yaw (gentler)
 
             return new TelemetryData
             {

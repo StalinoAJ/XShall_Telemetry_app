@@ -168,16 +168,18 @@ namespace SHALLControl.Plugins
             }
 
             // Combine acceleration + placement for better feel
-            // placement.roll is in radians (typically -0.05 to 0.05),
-            // acceleration.x is lateral G (typically -2 to 2)
+            // Funbit acceleration.x is very small (~0.02 normal, ~0.5 hard corner)
+            // placement.roll is in radians (tiny, ~0.001)
+            // gameSteer is -1 to 1 (full lock)
+            // → Need aggressive multipliers to get real seat movement
             float rollDeg  = (float)(placeRoll * 180.0 / Math.PI);
             float pitchDeg = (float)(placePitch * 180.0 / Math.PI);
 
             return new TelemetryData
             {
-                Pitch  = -(speedDelta * 2f + pitchDeg * 0.5f),  // brake/accel + road slope
-                Roll   = -(accelX * 6f + rollDeg * 2f),          // lateral G + body lean
-                Yaw    = -steer * 5f,                             // steering wheel
+                Pitch  = -(speedDelta * 3f + pitchDeg * 2f),     // brake/accel + road slope
+                Roll   = -(accelX * 35f + rollDeg * 10f),         // lateral G + body lean (boosted)
+                Yaw    = -steer * 18f,                             // steering wheel (boosted)
                 Surge  = accelZ,
                 Sway   = accelX,
                 Speed  = absSpeed,
