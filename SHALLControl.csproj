@@ -40,9 +40,12 @@
     <Reference Include="System.Net.Http" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
+    <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ButterworthFilter.cs" />
+    <Compile Include="HighPassFilter.cs" />
+    <Compile Include="WashoutFilter.cs" />
     <Compile Include="MainForm.cs" />
     <Compile Include="MainFormLogic.cs" />
     <Compile Include="MainFormPainting.cs" />
@@ -51,9 +54,13 @@
     <Compile Include="Plugins\ETS2Plugin.cs" />
     <Compile Include="Plugins\F1Plugin.cs" />
     <Compile Include="Plugins\ForzaPlugin.cs" />
+    <Compile Include="Plugins\ATSPlugin.cs" />
+    <Compile Include="Plugins\DirtRallyPlugin.cs" />
+    <Compile Include="Plugins\SnowRunnerPlugin.cs" />
     <Compile Include="Plugins\IGamePlugin.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="SeatController.cs" />
+    <Compile Include="Services\UpdateService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

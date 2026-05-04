@@ -15,9 +15,9 @@ namespace SHALLControl
     {
         private string _ip;
         private readonly HttpClient _http;
-        private readonly ButterworthFilter _pitchFilter;
-        private readonly ButterworthFilter _rollFilter;
-        private readonly ButterworthFilter _yawFilter;
+        private readonly WashoutFilter _pitchWashout;
+        private readonly WashoutFilter _rollWashout;
+        private readonly WashoutFilter _yawWashout;
         private DateTime _lastSend = DateTime.MinValue;
         private const int MIN_INTERVAL_MS = 50;  // max 20 Hz to seat
 
@@ -35,9 +35,10 @@ namespace SHALLControl
         {
             _ip = ip;
             _http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(400) };
-            _pitchFilter = new ButterworthFilter(5.0, 20.0);
-            _rollFilter  = new ButterworthFilter(5.0, 20.0);
-            _yawFilter   = new ButterworthFilter(5.0, 20.0);
+            // Low-pass for sustained G-force tilt (2Hz), High-pass for fast bumps (0.5Hz cutoff)
+            _pitchWashout = new WashoutFilter(2.0, 0.5, 20.0);
+            _rollWashout  = new WashoutFilter(2.0, 0.5, 20.0);
+            _yawWashout   = new WashoutFilter(2.0, 0.5, 20.0);
         }
 
         public void SetIp(string ip) { _ip = ip; }
@@ -68,14 +69,22 @@ namespace SHALLControl
             if ((DateTime.UtcNow - _lastSend).TotalMilliseconds < MIN_INTERVAL_MS) return;
             _lastSend = DateTime.UtcNow;
 
-            // Apply per-game scaling then filter
-            double rawPitch = t.Pitch * cfg.PitchScale;
-            double rawRoll  = t.Roll  * cfg.RollScale;
-            double rawYaw   = t.Yaw   * cfg.YawScale;
+            // 1. Sustained Forces (Tilt Coordination)
+            // Use Surge (Longitudinal G) for Pitch and Sway (Lateral G) for Roll.
+            // Scale factors assume 1G = ~15 degrees tilt (standard simulation practice).
+            double pitchSustained = -t.Surge * 15.0 * cfg.PitchScale; 
+            double rollSustained  =  t.Sway  * 15.0 * cfg.RollScale;
 
-            int pitch = Clamp(_pitchFilter.Filter(rawPitch), cfg.MaxAngle);
-            int roll  = Clamp(_rollFilter .Filter(rawRoll),  cfg.MaxAngle);
-            int yaw   = Clamp(_yawFilter  .Filter(rawYaw),   cfg.MaxAngle);
+            // 2. Transient Forces (Direct Orientation / Bumps)
+            // Use the Pitch/Roll/Yaw provided by the plugin as the source for transients.
+            double pitchTransient = t.Pitch * cfg.PitchScale;
+            double rollTransient  = t.Roll  * cfg.RollScale;
+            double yawTransient   = t.Yaw   * cfg.YawScale;
+
+            // Apply Washout Filtering
+            int pitch = Clamp(_pitchWashout.Filter(pitchSustained, pitchTransient), cfg.MaxAngle);
+            int roll  = Clamp(_rollWashout .Filter(rollSustained,  rollTransient),  cfg.MaxAngle);
+            int yaw   = Clamp(_yawWashout  .Filter(0,              yawTransient),   cfg.MaxAngle);
 
             LastPitch = pitch; LastRoll = roll; LastYaw = yaw;
 
@@ -91,7 +100,7 @@ namespace SHALLControl
         /// <summary>Return seat to neutral center position.</summary>
         public async Task CenterAsync()
         {
-            _pitchFilter.Reset(); _rollFilter.Reset(); _yawFilter.Reset();
+            _pitchWashout.Reset(); _rollWashout.Reset(); _yawWashout.Reset();
             LastPitch = 0; LastRoll = 0; LastYaw = 0;
             try
             {

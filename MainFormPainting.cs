@@ -59,13 +59,16 @@ namespace SHALLControl
             using (var br = new SolidBrush(GCOLORS[idx]))
                 g.FillEllipse(br, 16, 18, 14, 14);
 
-            // Icon emoji (top right)
-            using (var f = new Font("Segoe UI Emoji", 20f))
-            using (var br = new SolidBrush(Color.FromArgb(160, 255, 255, 255)))
-                g.DrawString(ICONS[idx], f, br, card.Width - 48, 10);
+            // Icon emoji (top right) — only show if no custom image is set
+            if (_gameImages[idx] == null)
+            {
+                using (var f = new Font("Segoe UI Emoji", 20f))
+                using (var br = new SolidBrush(Color.FromArgb(160, 255, 255, 255)))
+                    g.DrawString(ICONS[idx], f, br, card.Width - 48, 10);
+            }
 
             // Game name
-            using (var f = new Font("Segoe UI", 11f, FontStyle.Bold))
+            using (var f = new Font("Segoe UI", 10f, FontStyle.Bold))
             using (var br = new SolidBrush(C_TEXT))
                 g.DrawString(NAMES[idx], f, br, 16, 44);
 
@@ -73,6 +76,14 @@ namespace SHALLControl
             using (var f = new Font("Segoe UI", 8.5f))
             using (var br = new SolidBrush(C_TEXT2))
                 g.DrawString(PROTOS[idx], f, br, 16, 68);
+
+            // Custom path indicator
+            if (!string.IsNullOrEmpty(_customGamePaths[idx]))
+            {
+                using (var f = new Font("Segoe UI", 7f))
+                using (var br = new SolidBrush(C_GREEN))
+                    g.DrawString("📁 Path set", f, br, 16, 86);
+            }
         }
 
         private void PaintGauges(object sender, PaintEventArgs e)
@@ -116,49 +127,42 @@ namespace SHALLControl
                 g.DrawString(label, f, br, new RectangleF(bounds.Left, bounds.Bottom - 22, bounds.Width, 20), sf);
         }
 
-        private void PaintSeat(object sender, PaintEventArgs e)
+        private void PaintTelemetryPanel(object sender, PaintEventArgs e)
         {
+            var p = (Panel)sender;
             var g = e.Graphics;
             g.SmoothingMode = SmoothingMode.AntiAlias;
-            int w = _pbSeat.Width, h = _pbSeat.Height;
+            var rect = new Rectangle(14, 0, p.Width - 28, p.Height - 4);
 
-            // Subtle grid
-            using (var pen = new Pen(Color.FromArgb(52, 28, 38), 1))
+            using (var path = RoundRect(rect, 16))
             {
-                for (int x = 0; x < w; x += 36) g.DrawLine(pen, x, 0, x, h);
-                for (int y = 0; y < h; y += 36) g.DrawLine(pen, 0, y, w, y);
+                // Dark glass background
+                using (var br = new SolidBrush(Color.FromArgb(50, 26, 34)))
+                    g.FillPath(br, path);
+                using (var br = new LinearGradientBrush(rect,
+                    Color.FromArgb(12, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 135f))
+                    g.FillPath(br, path);
+                using (var pen = new Pen(C_BORDER, 1))
+                    g.DrawPath(pen, path);
             }
 
-            int cx = w / 2, cy = h / 2;
-            g.TranslateTransform(cx, cy);
-            g.RotateTransform(_seat.LastPitch * 0.5f);
+            // Divider line between columns
+            using (var pen = new Pen(Color.FromArgb(60, C_BORDER), 1))
+                g.DrawLine(pen, rect.Left + rect.Width / 2, rect.Top + 36, rect.Left + rect.Width / 2, rect.Bottom - 16);
 
-            using (var br = new SolidBrush(Color.FromArgb(72, 34, 48)))
-            using (var pen = new Pen(C_ACCENT, 2f))
-            {
-                g.FillPolygon(br, new PointF[] { new PointF(-60, 60), new PointF(60, 60), new PointF(50, 30), new PointF(-50, 30) });
-                g.DrawPolygon(pen, new PointF[] { new PointF(-60, 60), new PointF(60, 60), new PointF(50, 30), new PointF(-50, 30) });
-                g.FillPolygon(br, new PointF[] { new PointF(-45, 30), new PointF(45, 30), new PointF(40, -10), new PointF(-40, -10) });
-                g.DrawPolygon(pen, new PointF[] { new PointF(-45, 30), new PointF(45, 30), new PointF(40, -10), new PointF(-40, -10) });
-                g.RotateTransform(_seat.LastRoll * 0.3f);
-                g.FillPolygon(br, new PointF[] { new PointF(-35, -10), new PointF(35, -10), new PointF(30, -80), new PointF(-30, -80) });
-                g.DrawPolygon(pen, new PointF[] { new PointF(-35, -10), new PointF(35, -10), new PointF(30, -80), new PointF(-30, -80) });
-                using (var br2 = new SolidBrush(Color.FromArgb(90, 42, 58)))
-                {
-                    g.FillPolygon(br2, new PointF[] { new PointF(-22, -80), new PointF(22, -80), new PointF(20, -105), new PointF(-20, -105) });
-                    g.DrawPolygon(pen, new PointF[] { new PointF(-22, -80), new PointF(22, -80), new PointF(20, -105), new PointF(-20, -105) });
-                }
-            }
-            g.ResetTransform();
-
-            var sfC = new StringFormat { Alignment = StringAlignment.Center };
-            using (var f = new Font("Segoe UI", 7.5f, FontStyle.Bold))
-            using (var br = new SolidBrush(C_TEXT2))
-                g.DrawString("SHALL XR — LIVE PREVIEW", f, br, new RectangleF(0, h - 22, w, 18), sfC);
+            // Active indicator
             if (_active)
-                using (var f = new Font("Segoe UI", 8.5f, FontStyle.Bold))
+            {
+                using (var f = new Font("Segoe UI", 7.5f, FontStyle.Bold))
                 using (var br = new SolidBrush(C_GREEN))
-                    g.DrawString("● LIVE", f, br, 12, 8);
+                    g.DrawString("● RECEIVING", f, br, rect.Right - 100, rect.Top + 12);
+            }
+            else
+            {
+                using (var f = new Font("Segoe UI", 7.5f, FontStyle.Bold))
+                using (var br = new SolidBrush(C_TEXT2))
+                    g.DrawString("○ IDLE", f, br, rect.Right - 60, rect.Top + 12);
+            }
         }
 
         // ================================================================

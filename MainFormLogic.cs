@@ -35,7 +35,20 @@ namespace SHALLControl
                 "   Run Ets2Telemetry.exe BEFORE launching ETS2\n\n" +
                 "🏁  F1 Series (2018 — 2024)\n" +
                 "   Settings → Telemetry → UDP = ON\n" +
-                "   IP: 127.0.0.1   Port: 20777");
+                "   IP: 127.0.0.1   Port: 20777\n\n" +
+                "🚚  American Truck Simulator\n" +
+                "   Uses same Funbit Telemetry Server as ETS2\n" +
+                "   Install plugin DLL into ATS bin/win_x64/plugins/\n" +
+                "   Run Ets2Telemetry.exe BEFORE launching ATS\n\n" +
+                "❄  SnowRunner\n" +
+                "   No native telemetry — requires community bridge tool\n" +
+                "   Bridge sends UDP to port 21777\n" +
+                "   Check xsimulator.net for available tools\n\n" +
+                "🏔  Dirt Rally / Dirt Rally 2.0\n" +
+                "   Edit hardware_settings_config.xml:\n" +
+                "   Documents\\My Games\\DiRT Rally 2.0\\hardwaresettings\\\n" +
+                "   <udp enabled=\"true\" extradata=\"3\"\n" +
+                "        ip=\"127.0.0.1\" port=\"20777\" delay=\"1\" />");
 
             y = AddHelpCard(scroll, y, "3", "Select & Start",
                 "• Click a game card on the Home tab\n" +
@@ -44,25 +57,43 @@ namespace SHALLControl
                 "• Click  ▶ START  to begin motion session\n" +
                 "• Launch the game and drive!");
 
-            y = AddHelpCard(scroll, y, "4", "Tune the Feel",
+            y = AddHelpCard(scroll, y, "4", "Custom Game Path & Image",
+                "• Select a game card first\n" +
+                "• Click  📁 SET GAME PATH  to set the game .exe location\n" +
+                "• Click  🖼 SET GAME IMAGE  to set a custom card icon\n" +
+                "  Supported formats: PNG, JPG, BMP, ICO\n" +
+                "• The image appears in the top-right of the game card");
+
+            y = AddHelpCard(scroll, y, "5", "Tune the Feel",
                 "• Pitch = acceleration / braking tilt\n" +
                 "• Roll = cornering lean (left/right)\n" +
                 "• Yaw = steering rotation feel\n" +
                 "• Start low (0.5×) and increase gradually\n" +
                 "• Max Angle is a hard safety clamp (≤ 15° recommended)");
 
-            y = AddHelpCard(scroll, y, "5", "Troubleshooting",
+            y = AddHelpCard(scroll, y, "6", "Live Telemetry",
+                "• The incoming telemetry data panel shows real-time values\n" +
+                "  being received from the game plugin\n" +
+                "• Pitch/Roll/Yaw = seat angles in degrees\n" +
+                "• Surge/Sway/Heave = G-force components\n" +
+                "• Use this to verify your game is sending data correctly");
+
+            y = AddHelpCard(scroll, y, "7", "Troubleshooting",
                 "Seat doesn't respond?\n" +
                 "  → ping 192.168.1.40 in PowerShell\n" +
                 "  → Open http://192.168.1.40 in browser\n\n" +
                 "No telemetry?\n" +
                 "  → Verify Data Out is ON in game settings\n" +
-                "  → For ETS2: ensure Telemetry Server is running\n\n" +
+                "  → For ETS2/ATS: ensure Telemetry Server is running\n" +
+                "  → For Dirt Rally: verify XML config is saved\n\n" +
                 "Jerky motion?\n" +
-                "  → Lower intensity sliders");
+                "  → Lower intensity sliders\n\n" +
+                "SnowRunner no data?\n" +
+                "  → Install a community telemetry bridge tool\n" +
+                "  → Check port 21777 is not blocked by firewall");
 
             y += 20;
-            scroll.Controls.Add(MakeLabel("SHALL XR Seat Controller v1.0", 28, y, C_TEXT2, 8f, FontStyle.Regular));
+            scroll.Controls.Add(MakeLabel("SHALL XR Seat Controller v1.1", 28, y, C_TEXT2, 8f, FontStyle.Regular));
             _helpPanel.Controls.Add(scroll);
         }
 
@@ -120,7 +151,7 @@ namespace SHALLControl
         {
             if (_active) return;
             _selGame = idx;
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < GAME_COUNT; i++)
             {
                 _cardLbl[i].Text = i == idx ? "▶  SELECTED" : "";
                 _cards[i].Invalidate();
@@ -155,13 +186,18 @@ namespace SHALLControl
                 PitchScale = _trPitch.Value / 10f,
                 RollScale = _trRoll.Value / 10f,
                 YawScale = _trYaw.Value / 10f,
-                MaxAngle = (int)_numMax.Value
+                MaxAngle = (int)_numMax.Value,
+                ExePath = _customGamePaths[_selGame]
             };
             switch (_selGame)
             {
                 case 0: _plugin = new ForzaPlugin(); break;
                 case 1: _plugin = new ETS2Plugin(); break;
-                default: _plugin = new F1Plugin(); break;
+                case 2: _plugin = new F1Plugin(); break;
+                case 3: _plugin = new ATSPlugin(); break;
+                case 4: _plugin = new SnowRunnerPlugin(); break;
+                case 5: _plugin = new DirtRallyPlugin(); break;
+                default: _plugin = new ForzaPlugin(); break;
             }
             _plugin.TelemetryReceived += OnTelemetry;
             _plugin.Start();
@@ -171,7 +207,8 @@ namespace SHALLControl
             _btnStart.ForeColor = Color.White;
             _btnConnect.Enabled = false;
             foreach (var c in _cards) c.Enabled = false;
-            Log("▶ Started — " + _cfg.Name);
+            Log("▶ Started — " + _cfg.Name +
+                (string.IsNullOrEmpty(_cfg.ExePath) ? "" : "  [" + _cfg.ExePath + "]"));
         }
 
         private void StopSession()
@@ -190,9 +227,26 @@ namespace SHALLControl
             Log("■ Stopped — seat centered.");
         }
 
+        private int _pktCount;
+        private DateTime _lastPktLog = DateTime.MinValue;
+
         private void OnTelemetry(object sender, TelemetryData t)
         {
             _latest = t;
+            _pktCount++;
+
+            // Log first packet and then every 5 seconds for diagnostics
+            if (_pktCount == 1)
+            {
+                BeginInvoke((Action)(() => Log("📡 First telemetry packet received! Data is flowing.")));
+            }
+            else if ((DateTime.UtcNow - _lastPktLog).TotalSeconds >= 5)
+            {
+                _lastPktLog = DateTime.UtcNow;
+                int p = _seat.LastPitch, r = _seat.LastRoll, y = _seat.LastYaw;
+                BeginInvoke((Action)(() => Log($"📡 Pkts: {_pktCount}  Seat → P:{p} R:{r} Y:{y}  Connected:{_seat.IsConnected}")));
+            }
+
             _seat.Send(t, _cfg);
         }
 
@@ -200,11 +254,21 @@ namespace SHALLControl
         {
             if (_latest == null || _currentTab != 0) return;
             _pbGauges.Invalidate();
-            _pbSeat.Invalidate();
             _lblSpeed.Text = "Speed:  " + _latest.Speed.ToString("0.0") + " km/h";
             _lblPitchVal.Text = (_trPitch.Value / 10f).ToString("0.0") + "×";
             _lblRollVal.Text = (_trRoll.Value / 10f).ToString("0.0") + "×";
             _lblYawVal.Text = (_trYaw.Value / 10f).ToString("0.0") + "×";
+
+            // Update live telemetry data
+            _lblTelPitch.Text  = _latest.Pitch.ToString("+0.000;-0.000") + "°";
+            _lblTelRoll.Text   = _latest.Roll.ToString("+0.000;-0.000") + "°";
+            _lblTelYaw.Text    = _latest.Yaw.ToString("+0.000;-0.000") + "°";
+            _lblTelSurge.Text  = _latest.Surge.ToString("+0.000;-0.000") + " G";
+            _lblTelSway.Text   = _latest.Sway.ToString("+0.000;-0.000") + " G";
+            _lblTelHeave.Text  = _latest.Heave.ToString("+0.000;-0.000") + " G";
+            _lblTelSpeed2.Text = _latest.Speed.ToString("0.0") + " km/h";
+            _lblTelValid.Text  = _latest.IsValid ? "● YES" : "○ NO";
+            _lblTelValid.ForeColor = _latest.IsValid ? C_GREEN : C_RED;
         }
     }
 }
