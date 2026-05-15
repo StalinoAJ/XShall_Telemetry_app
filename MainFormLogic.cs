@@ -119,8 +119,8 @@ namespace SHALLControl
                         g.FillPath(br, path);
                     using (var br = new SolidBrush(Color.FromArgb(10, 255, 255, 255)))
                         g.FillPath(br, path);
-                    using (var pen = new Pen(C_BORDER, 1))
-                        g.DrawPath(pen, path);
+                    using var pen = new Pen(C_BORDER, 1);
+                    g.DrawPath(pen, path);
                 }
                 // Step circle
                 var circleRect = new Rectangle(16, 12, 30, 30);
@@ -148,19 +148,22 @@ namespace SHALLControl
         // ================================================================
         private string TryAutoDetectPath(int idx)
         {
-            string[] subPaths = null;
-            if (idx == 0) subPaths = new[] { @"ForzaHorizon5\ForzaHorizon5.exe" };
-            else if (idx == 1) subPaths = new[] { @"Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe" };
-            else if (idx == 2) subPaths = new[] { @"F1 23\F1_23.exe", @"F1 22\F1_22.exe", @"F1 24\F1_24.exe" };
-            else if (idx == 3) subPaths = new[] { @"American Truck Simulator\bin\win_x64\amtrucks.exe" };
-            else if (idx == 4) subPaths = new[] { @"SnowRunner\en_us\Sources\Bin\SnowRunner.exe" };
-            else if (idx == 5) subPaths = new[] { @"DiRT Rally 2.0\dirtrally2.exe", @"DiRT Rally\drt.exe" };
+            string[] subPaths = idx switch
+            {
+                0 => ["ForzaHorizon5\\ForzaHorizon5.exe"],
+                1 => ["Euro Truck Simulator 2\\bin\\win_x64\\eurotrucks2.exe"],
+                2 => ["F1 23\\F1_23.exe", "F1 22\\F1_22.exe", "F1 24\\F1_24.exe"],
+                3 => ["American Truck Simulator\\bin\\win_x64\\amtrucks.exe"],
+                4 => ["SnowRunner\\en_us\\Sources\\Bin\\SnowRunner.exe"],
+                5 => ["DiRT Rally 2.0\\dirtrally2.exe", "DiRT Rally\\drt.exe"],
+                _ => null
+            };
             if (subPaths == null) return null;
 
             var libraries = new System.Collections.Generic.List<string> { @"C:\Program Files (x86)\Steam", @"C:\Program Files\Steam", @"C:\XboxGames", @"D:\XboxGames", @"E:\XboxGames" };
             try {
-                using(var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam")) {
-                    if (key != null) {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam");
+                if (key != null) {
                         string steamPath = key.GetValue("SteamPath") as string;
                         if (!string.IsNullOrEmpty(steamPath)) {
                             steamPath = steamPath.Replace("/", "\\");
@@ -178,7 +181,6 @@ namespace SHALLControl
                                 }
                             }
                         }
-                    }
                 }
             } catch { }
 
@@ -199,7 +201,6 @@ namespace SHALLControl
         {
             if (_active) return;
             _selGame = idx;
-            
             if (string.IsNullOrEmpty(_customGamePaths[idx])) {
                 string autoPath = TryAutoDetectPath(idx);
                 if (!string.IsNullOrEmpty(autoPath)) {
@@ -246,16 +247,16 @@ namespace SHALLControl
                 MaxAngle = (int)_numMax.Value,
                 ExePath = _customGamePaths[_selGame]
             };
-            switch (_selGame)
+            _plugin = _selGame switch
             {
-                case 0: _plugin = new ForzaPlugin(); break;
-                case 1: _plugin = new ETS2Plugin(); break;
-                case 2: _plugin = new F1Plugin(); break;
-                case 3: _plugin = new ATSPlugin(); break;
-                case 4: _plugin = new SnowRunnerPlugin(); break;
-                case 5: _plugin = new DirtRallyPlugin(); break;
-                default: _plugin = new ForzaPlugin(); break;
-            }
+                0 => new ForzaPlugin(),
+                1 => new ETS2Plugin(),
+                2 => new F1Plugin(),
+                3 => new ATSPlugin(),
+                4 => new SnowRunnerPlugin(),
+                5 => new DirtRallyPlugin(),
+                _ => new ForzaPlugin()
+            };
             _plugin.TelemetryReceived += OnTelemetry;
             _plugin.Start();
             _active = true;

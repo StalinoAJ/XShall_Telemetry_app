@@ -7,36 +7,19 @@ using SHALLControl.Models;
 namespace SHALLControl.Plugins
 {
     /// <summary>
-    /// Dirt Rally / Dirt Rally 2.0 UDP telemetry plugin.
-    /// Uses the Codemasters UDP protocol on port 20777.
-    ///
+    /// <para>Dirt Rally / Dirt Rally 2.0 UDP telemetry plugin.</para>
+    /// <para>Uses the Codemasters UDP protocol on port 20777.</para>
+    /// <para>
     /// Enable in hardware_settings_config.xml:
     ///   Documents\My Games\DiRT Rally 2.0\hardwaresettings\
-    ///     <udp enabled="true" extradata="3" ip="127.0.0.1" port="20777" delay="1" />
-    ///
+    ///     &lt;udp enabled="true" extradata="3" ip="127.0.0.1" port="20777" delay="1" /&gt;
+    /// </para>
+    /// <para>
     /// Codemasters "extradata=3" packet (264 bytes):
     ///   Offset  0: float time
     ///   Offset  4: float lapTime
-    ///   Offset  8: float lapDistance
-    ///   Offset 12: float totalDistance
-    ///   Offset 16: float posX
-    ///   Offset 20: float posY
-    ///   Offset 24: float posZ
-    ///   Offset 28: float speed           (m/s)
-    ///   Offset 32: float velX            (m/s)
-    ///   Offset 36: float velY            (m/s)
-    ///   Offset 40: float velZ            (m/s)
-    ///   Offset 44: float rollX           (forward dir X)
-    ///   Offset 48: float rollY           (forward dir Y)
-    ///   Offset 52: float rollZ           (forward dir Z)
-    ///   Offset 56: float pitchX          (right dir X)
-    ///   Offset 60: float pitchY          (right dir Y)
-    ///   Offset 64: float pitchZ          (right dir Z)
-    ///   Offset 68: float suspRL
     ///   ...
-    ///   Offset 136: float gForceLateral
-    ///   Offset 140: float gForceLongitudinal
-    ///   ...
+    /// </para>
     /// </summary>
     public class DirtRallyPlugin : IGamePlugin
     {
@@ -142,8 +125,8 @@ namespace SHALLControl.Plugins
                 : (speedKmh - DEADZONE) / (FADE_END - DEADZONE);
 
             // Rally cars: aggressive pitch & roll from terrain + G-forces
-            float seatPitch = (-pitchDeg * 1.8f + gLong * 2f) * speedFactor;
-            float seatRoll  = (rollDeg * 2.5f + gLat * 3f) * speedFactor;
+            float seatPitch = ((-pitchDeg * 1.8f) + (gLong * 2f)) * speedFactor;
+            float seatRoll  = ((rollDeg * 2.5f) + (gLat * 3f)) * speedFactor;
             float seatYaw   = gLat * 6f * speedFactor;
 
             return new TelemetryData
