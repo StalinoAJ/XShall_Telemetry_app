@@ -24,8 +24,8 @@ namespace SHALLControl
             _a0 = k2 / norm;
             _a1 = 2.0 * _a0;
             _a2 = _a0;
-            _b1 = 2.0 * _a0 * (1.0 / k2 - 1.0);
-            _b2 = 1.0 - (2.0 * _a0 + _b1);
+            _b1 = 2.0 * (k2 - 1.0) / norm;
+            _b2 = (1.0 - k1 + k2) / norm;
         }
 
         public double Filter(double input)
