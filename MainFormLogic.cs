@@ -2,6 +2,7 @@ using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Windows.Forms;
+using System.IO;
 using SHALLControl.Models;
 using SHALLControl.Plugins;
 
@@ -114,11 +115,9 @@ namespace SHALLControl
                 var rect = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
                 using (var path = RoundRect(rect, 16))
                 {
-                    // Glass card background
                     using (var br = new LinearGradientBrush(rect, C_CARD, C_BG2, 135f))
                         g.FillPath(br, path);
-                    using (var br = new LinearGradientBrush(rect,
-                        Color.FromArgb(15, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 135f))
+                    using (var br = new SolidBrush(Color.FromArgb(10, 255, 255, 255)))
                         g.FillPath(br, path);
                     using (var pen = new Pen(C_BORDER, 1))
                         g.DrawPath(pen, path);
@@ -147,17 +146,75 @@ namespace SHALLControl
         // ================================================================
         //  GAME LOGIC
         // ================================================================
+        private string TryAutoDetectPath(int idx)
+        {
+            string[] subPaths = null;
+            if (idx == 0) subPaths = new[] { @"ForzaHorizon5\ForzaHorizon5.exe" };
+            else if (idx == 1) subPaths = new[] { @"Euro Truck Simulator 2\bin\win_x64\eurotrucks2.exe" };
+            else if (idx == 2) subPaths = new[] { @"F1 23\F1_23.exe", @"F1 22\F1_22.exe", @"F1 24\F1_24.exe" };
+            else if (idx == 3) subPaths = new[] { @"American Truck Simulator\bin\win_x64\amtrucks.exe" };
+            else if (idx == 4) subPaths = new[] { @"SnowRunner\en_us\Sources\Bin\SnowRunner.exe" };
+            else if (idx == 5) subPaths = new[] { @"DiRT Rally 2.0\dirtrally2.exe", @"DiRT Rally\drt.exe" };
+            if (subPaths == null) return null;
+
+            var libraries = new System.Collections.Generic.List<string> { @"C:\Program Files (x86)\Steam", @"C:\Program Files\Steam", @"C:\XboxGames", @"D:\XboxGames", @"E:\XboxGames" };
+            try {
+                using(var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam")) {
+                    if (key != null) {
+                        string steamPath = key.GetValue("SteamPath") as string;
+                        if (!string.IsNullOrEmpty(steamPath)) {
+                            steamPath = steamPath.Replace("/", "\\");
+                            libraries.Add(steamPath);
+                            string vdf = Path.Combine(steamPath, "steamapps", "libraryfolders.vdf");
+                            if (File.Exists(vdf)) {
+                                foreach(var line in File.ReadAllLines(vdf)) {
+                                    if (line.Contains("\"path\"")) {
+                                        var parts = line.Split('"');
+                                        if (parts.Length >= 4) {
+                                            string libPath = parts[3].Replace("\\\\", "\\");
+                                            libraries.Add(libPath);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch { }
+
+            foreach(var lib in libraries) {
+                string common = Path.Combine(lib, "steamapps", "common");
+                if (!Directory.Exists(common)) common = lib;
+
+                if (!Directory.Exists(common)) continue;
+                foreach(var sub in subPaths) {
+                    string full = Path.Combine(common, sub);
+                    if (File.Exists(full)) return full;
+                }
+            }
+            return null;
+        }
+
         private void SelectGame(int idx)
         {
             if (_active) return;
             _selGame = idx;
-            for (int i = 0; i < GAME_COUNT; i++)
-            {
-                _cardLbl[i].Text = i == idx ? "▶  SELECTED" : "";
-                _cards[i].Invalidate();
+            
+            if (string.IsNullOrEmpty(_customGamePaths[idx])) {
+                string autoPath = TryAutoDetectPath(idx);
+                if (!string.IsNullOrEmpty(autoPath)) {
+                    _customGamePaths[idx] = autoPath;
+                    Log("Auto-detected path: " + autoPath);
+                } else {
+                    Log("Selected: " + NAMES[idx] + " (Path not found, please set manually)");
+                }
+            } else {
+                Log("Selected: " + NAMES[idx] + "  (" + PROTOS[idx] + ")");
             }
+
+            for (int i = 0; i < GAME_COUNT; i++) _cards[i].Invalidate();
             _btnStart.Enabled = true;
-            Log("Selected: " + NAMES[idx] + "  (" + PROTOS[idx] + ")");
+            _heroPanel?.Invalidate();
         }
 
         private async System.Threading.Tasks.Task ConnectAsync()
@@ -207,23 +264,21 @@ namespace SHALLControl
             _btnStart.ForeColor = Color.White;
             _btnConnect.Enabled = false;
             foreach (var c in _cards) c.Enabled = false;
-            Log("▶ Started — " + _cfg.Name +
-                (string.IsNullOrEmpty(_cfg.ExePath) ? "" : "  [" + _cfg.ExePath + "]"));
+            Log("▶ Started — " + _cfg.Name);
         }
 
         private void StopSession()
         {
             _active = false;
-            _plugin?.Stop();
-            _plugin?.Dispose();
-            _plugin = null;
+            _plugin?.Stop(); _plugin?.Dispose(); _plugin = null;
             _ = _seat.CenterAsync();
             _btnStart.Text = "▶  START";
             _btnStart.BackColor = C_GREEN;
-            _btnStart.ForeColor = Color.FromArgb(20, 10, 15);
+            _btnStart.ForeColor = Color.FromArgb(8, 24, 10);
             _btnConnect.Enabled = true;
             foreach (var c in _cards) c.Enabled = true;
             _latest = TelemetryData.Zero;
+            _heroPanel?.Invalidate();
             Log("■ Stopped — seat centered.");
         }
 
@@ -254,21 +309,11 @@ namespace SHALLControl
         {
             if (_latest == null || _currentTab != 0) return;
             _pbGauges.Invalidate();
-            _lblSpeed.Text = "Speed:  " + _latest.Speed.ToString("0.0") + " km/h";
+            _lblSpeed.Text = _active ? _latest.Speed.ToString("0.0") + " km/h" : "— km/h";
             _lblPitchVal.Text = (_trPitch.Value / 10f).ToString("0.0") + "×";
-            _lblRollVal.Text = (_trRoll.Value / 10f).ToString("0.0") + "×";
-            _lblYawVal.Text = (_trYaw.Value / 10f).ToString("0.0") + "×";
-
-            // Update live telemetry data
-            _lblTelPitch.Text  = _latest.Pitch.ToString("+0.000;-0.000") + "°";
-            _lblTelRoll.Text   = _latest.Roll.ToString("+0.000;-0.000") + "°";
-            _lblTelYaw.Text    = _latest.Yaw.ToString("+0.000;-0.000") + "°";
-            _lblTelSurge.Text  = _latest.Surge.ToString("+0.000;-0.000") + " G";
-            _lblTelSway.Text   = _latest.Sway.ToString("+0.000;-0.000") + " G";
-            _lblTelHeave.Text  = _latest.Heave.ToString("+0.000;-0.000") + " G";
-            _lblTelSpeed2.Text = _latest.Speed.ToString("0.0") + " km/h";
-            _lblTelValid.Text  = _latest.IsValid ? "● YES" : "○ NO";
-            _lblTelValid.ForeColor = _latest.IsValid ? C_GREEN : C_RED;
+            _lblRollVal.Text  = (_trRoll.Value  / 10f).ToString("0.0") + "×";
+            _lblYawVal.Text   = (_trYaw.Value   / 10f).ToString("0.0") + "×";
+            _telemetryPanel?.Invalidate();
         }
     }
 }
