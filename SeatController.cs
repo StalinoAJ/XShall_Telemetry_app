@@ -81,6 +81,16 @@ namespace SHALLControl
             double rollTransient  = t.Roll  * cfg.RollScale;
             double yawTransient   = t.Yaw   * cfg.YawScale;
 
+            // Anti-windup: clamp inputs before the filter so internal state
+            // never accumulates beyond the hardware limit, preventing oscillation
+            // at ±MaxAngle when the chair locks to its extreme position.
+            double maxD = cfg.MaxAngle;
+            pitchSustained = Math.Max(-maxD, Math.Min(maxD, pitchSustained));
+            rollSustained  = Math.Max(-maxD, Math.Min(maxD, rollSustained));
+            pitchTransient = Math.Max(-maxD, Math.Min(maxD, pitchTransient));
+            rollTransient  = Math.Max(-maxD, Math.Min(maxD, rollTransient));
+            yawTransient   = Math.Max(-maxD, Math.Min(maxD, yawTransient));
+
             // Apply Washout Filtering
             int pitch = Clamp(_pitchWashout.Filter(pitchSustained, pitchTransient), cfg.MaxAngle);
             int roll  = Clamp(_rollWashout .Filter(rollSustained,  rollTransient),  cfg.MaxAngle);

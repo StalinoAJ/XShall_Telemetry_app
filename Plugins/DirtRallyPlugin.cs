@@ -124,10 +124,12 @@ namespace SHALLControl.Plugins
             float speedFactor = speedKmh >= FADE_END ? 1f
                 : (speedKmh - DEADZONE) / (FADE_END - DEADZONE);
 
-            // Rally cars: aggressive pitch & roll from terrain + G-forces
-            float seatPitch = ((-pitchDeg * 1.8f) + (gLong * 2f)) * speedFactor;
-            float seatRoll  = ((rollDeg * 2.5f) + (gLat * 3f)) * speedFactor;
-            float seatYaw   = gLat * 6f * speedFactor;
+            // Rally cars: pitch & roll derived from terrain orientation + G-forces.
+            // Values intentionally kept in a mild degree-range — SeatController applies
+            // the user's PitchScale / RollScale / YawScale on top of these.
+            float seatPitch = ((-pitchDeg) + (gLong * 1.2f)) * speedFactor;
+            float seatRoll  = ((rollDeg)   + (gLat  * 1.5f)) * speedFactor;
+            float seatYaw   = gLat * 3f * speedFactor;
 
             return new TelemetryData
             {
