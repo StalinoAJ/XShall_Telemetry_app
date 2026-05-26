@@ -23,14 +23,14 @@ namespace SHALLControl.Plugins
     /// </summary>
     public class DirtRallyPlugin : IGamePlugin
     {
-        public string GameName  => "Dirt Rally";
-        public string Protocol  => "UDP :20777";
-        public bool   IsRunning => _running;
+        public string GameName => "Dirt Rally";
+        public string Protocol => "UDP :20777";
+        public bool IsRunning => _running;
 
         public event EventHandler<TelemetryData> TelemetryReceived;
 
         private const int PORT = 20777;
-        private Thread    _thread;
+        private Thread _thread;
         private UdpClient _udp;
         private volatile bool _running;
 
@@ -71,7 +71,7 @@ namespace SHALLControl.Plugins
             // Minimum for the Codemasters packet
             if (d == null || d.Length < 64) return null;
 
-            float time  = BitConverter.ToSingle(d, 0);
+            float time = BitConverter.ToSingle(d, 0);
             if (time <= 0) return null;  // not in stage
 
             float speed = BitConverter.ToSingle(d, 28);  // m/s
@@ -96,16 +96,16 @@ namespace SHALLControl.Plugins
             // fwdY = vertical component of forward direction → pitch
             // rightY = vertical component of right direction → roll
             float pitchRad = (float)Math.Asin(Math.Max(-1, Math.Min(1, fwdY)));
-            float rollRad  = (float)Math.Asin(Math.Max(-1, Math.Min(1, rightY)));
+            float rollRad = (float)Math.Asin(Math.Max(-1, Math.Min(1, rightY)));
 
             float pitchDeg = (float)(pitchRad * 180.0 / Math.PI);
-            float rollDeg  = (float)(rollRad  * 180.0 / Math.PI);
+            float rollDeg = (float)(rollRad * 180.0 / Math.PI);
 
             // G-forces (if packet is large enough to contain them)
             float gLat = 0, gLong = 0;
             if (d.Length >= 144)
             {
-                gLat  = BitConverter.ToSingle(d, 136);
+                gLat = BitConverter.ToSingle(d, 136);
                 gLong = BitConverter.ToSingle(d, 140);
             }
 
@@ -116,29 +116,30 @@ namespace SHALLControl.Plugins
             {
                 return new TelemetryData
                 {
-                    Pitch = 0, Roll = 0, Yaw = 0,
-                    Speed = speedKmh, IsValid = true
+                    Pitch = 0,
+                    Roll = 0,
+                    Yaw = 0,
+                    Speed = speedKmh,
+                    IsValid = true
                 };
             }
 
             float speedFactor = speedKmh >= FADE_END ? 1f
                 : (speedKmh - DEADZONE) / (FADE_END - DEADZONE);
 
-            // Rally cars: pitch & roll derived from terrain orientation + G-forces.
-            // Values intentionally kept in a mild degree-range — SeatController applies
-            // the user's PitchScale / RollScale / YawScale on top of these.
-            float seatPitch = ((-pitchDeg) + (gLong * 1.2f)) * speedFactor;
-            float seatRoll  = ((rollDeg)   + (gLat  * 1.5f)) * speedFactor;
-            float seatYaw   = gLat * 3f * speedFactor;
+            // Rally cars: aggressive pitch & roll from terrain + G-forces
+            float seatPitch = ((-pitchDeg * 1.8f) + (gLong * 2f)) * speedFactor;
+            float seatRoll = ((rollDeg * 2.5f) + (gLat * 3f)) * speedFactor;
+            float seatYaw = gLat * 6f * speedFactor;
 
             return new TelemetryData
             {
-                Pitch   = seatPitch,
-                Roll    = seatRoll,
-                Yaw     = seatYaw,
-                Surge   = gLong,
-                Sway    = gLat,
-                Speed   = speedKmh,
+                Pitch = seatPitch,
+                Roll = seatRoll,
+                Yaw = seatYaw,
+                Surge = gLong,
+                Sway = gLat,
+                Speed = speedKmh,
                 IsValid = true
             };
         }
