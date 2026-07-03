@@ -94,7 +94,7 @@ namespace SHALLControl
                 "  → Check port 21777 is not blocked by firewall");
 
             y += 20;
-            scroll.Controls.Add(MakeLabel("SHALL XR Seat Controller v1.1", 28, y, C_TEXT2, 8f, FontStyle.Regular));
+            scroll.Controls.Add(MakeLabel("SHALL XR Seat Controller v" + System.Windows.Forms.Application.ProductVersion, 28, y, C_TEXT2, 8f, FontStyle.Regular));
             _helpPanel.Controls.Add(scroll);
         }
 

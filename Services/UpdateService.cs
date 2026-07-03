@@ -4,7 +4,6 @@ using System.IO;
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -14,8 +13,14 @@ namespace SHALLControl.Services
     {
         private const string REPO_OWNER = "StalinoAJ";
         private const string REPO_NAME = "XShall_Telemetry_app";
-        private const string CURRENT_VERSION = "v1.1"; // This is your current version
         private readonly HttpClient _httpClient;
+
+        // Events for UI progress reporting
+        public event Action<string, string> UpdateAvailable;      // (version, downloadUrl)
+        public event Action<int, long, long> DownloadProgress;    // (percent, received, total)
+        public event Action<string> StatusChanged;                // status message
+        public event Action<string> UpdateFailed;                 // error message
+        public event Action UpdateCompleting;                     // about to restart
 
         public UpdateService()
         {
@@ -27,32 +32,26 @@ namespace SHALLControl.Services
         {
             try
             {
-                // 1. Check for latest release
+                StatusChanged?.Invoke("Checking for updates…");
+
                 var url = $"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/releases/latest";
                 var response = await _httpClient.GetStringAsync(url);
-                
-                // Very basic JSON parsing without external dependencies
+
                 string tagName = ExtractJsonValue(response, "tag_name");
                 string releaseName = ExtractJsonValue(response, "name");
-                
-                // If it's a newer version (e.g. v1.2 vs v1.1)
-                // Here we just do a simple string comparison or check if names are different
-                // Adjust logic as necessary to match your versioning scheme
-                if (releaseName != null && releaseName != CURRENT_VERSION && releaseName != "v1.0") 
-                {
-                    // Find the browser_download_url for the zip file
-                    string downloadUrl = ExtractJsonValue(response, "browser_download_url");
-                    if (string.IsNullOrEmpty(downloadUrl)) return;
-                    
-                    var result = MessageBox.Show(
-                        $"A new update ({releaseName}) is available!\nDo you want to download and install it now?", 
-                        "Update Available", MessageBoxButtons.YesNo, MessageBoxIcon.Information);
-                        
-                    if (result == DialogResult.Yes)
-                    {
-                        await PerformUpdateAsync(downloadUrl);
-                    }
-                }
+
+                string currentVersion = Application.ProductVersion; // e.g. "1.1.3.0"
+                string remoteClean = (releaseName ?? tagName ?? "").TrimStart('v', 'V').Trim();
+
+                if (string.IsNullOrEmpty(remoteClean)) return;
+
+                if (!IsNewerVersion(remoteClean, currentVersion)) return;
+
+                string downloadUrl = ExtractJsonValue(response, "browser_download_url");
+                if (string.IsNullOrEmpty(downloadUrl)) return;
+
+                // Notify that an update is available
+                UpdateAvailable?.Invoke(releaseName ?? tagName, downloadUrl);
             }
             catch (Exception ex)
             {
@@ -60,7 +59,33 @@ namespace SHALLControl.Services
             }
         }
 
-        private async Task PerformUpdateAsync(string downloadUrl)
+        private bool IsNewerVersion(string remote, string local)
+        {
+            try
+            {
+                // Normalize: strip trailing zeros for comparison
+                // remote might be "1.1.3", local might be "1.1.3.0"
+                var rv = new Version(NormalizeVersion(remote));
+                var lv = new Version(NormalizeVersion(local));
+                return rv > lv;
+            }
+            catch
+            {
+                // Fallback: string comparison
+                return remote != local && remote != local.TrimEnd('.', '0');
+            }
+        }
+
+        private string NormalizeVersion(string v)
+        {
+            v = v.TrimStart('v', 'V').Trim();
+            var parts = v.Split('.');
+            // Ensure at least 2 parts for Version class
+            if (parts.Length == 1) return v + ".0";
+            return v;
+        }
+
+        public async Task PerformUpdateAsync(string downloadUrl)
         {
             try
             {
@@ -70,22 +95,32 @@ namespace SHALLControl.Services
 
                 string zipPath = Path.Combine(tempDir, "update.zip");
 
-                // Download the update
+                // Download with progress
+                StatusChanged?.Invoke("Downloading update…");
+
                 using (var client = new WebClient())
                 {
                     client.Headers.Add("User-Agent", "SHALLControl-Updater");
+                    client.DownloadProgressChanged += (s, e) =>
+                        DownloadProgress?.Invoke(e.ProgressPercentage, e.BytesReceived, e.TotalBytesToReceive);
+
                     await client.DownloadFileTaskAsync(new Uri(downloadUrl), zipPath);
                 }
 
-                // Extract the zip
-                string extractDir = Path.Combine(tempDir, "Extracted");
-                ZipFile.ExtractToDirectory(zipPath, extractDir);
+                // Extract
+                StatusChanged?.Invoke("Extracting files…");
+                DownloadProgress?.Invoke(100, 0, 0); // Keep bar full
 
-                // Create an updater batch script
+                string extractDir = Path.Combine(tempDir, "Extracted");
+                await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, extractDir));
+
+                // Prepare updater script
+                StatusChanged?.Invoke("Preparing installation…");
+
                 string batPath = Path.Combine(tempDir, "updater.bat");
                 string appDir = AppDomain.CurrentDomain.BaseDirectory;
                 string exeName = AppDomain.CurrentDomain.FriendlyName;
-                
+
                 string batContent = $@"
 @echo off
 timeout /t 2 /nobreak > nul
@@ -94,6 +129,12 @@ start """" ""{Path.Combine(appDir, exeName)}""
 del ""%~f0""
 ";
                 File.WriteAllText(batPath, batContent);
+
+                // Signal UI we're about to restart
+                StatusChanged?.Invoke("Restarting application…");
+                UpdateCompleting?.Invoke();
+
+                await Task.Delay(800); // Brief pause so user sees the final status
 
                 // Run the batch file
                 var psi = new ProcessStartInfo
@@ -109,7 +150,7 @@ del ""%~f0""
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Failed to apply update: " + ex.Message, "Update Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                UpdateFailed?.Invoke("Update failed: " + ex.Message);
             }
         }
 
@@ -118,11 +159,11 @@ del ""%~f0""
             string search = "\"" + key + "\":";
             int idx = json.IndexOf(search);
             if (idx < 0) return null;
-            
+
             idx += search.Length;
             // Skip spaces
             while (idx < json.Length && (json[idx] == ' ' || json[idx] == '\t')) idx++;
-            
+
             if (json[idx] == '"')
             {
                 idx++;

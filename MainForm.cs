@@ -53,6 +53,14 @@ namespace SHALLControl
         private Button _tabHome, _tabHelp;
         private System.Windows.Forms.Timer _uiTimer;
 
+        // Update overlay controls
+        private Panel _updateOverlay;
+        private Label _updateTitle, _updateStatus, _updatePercent;
+        private Panel _updateProgressBg, _updateProgressFill;
+        private Button _btnInstall, _btnDismiss;
+        private UpdateService _updateService;
+        private string _pendingDownloadUrl;
+
         static readonly string[] NAMES  = { "Forza Horizon 5","Euro Truck Sim 2","F1 Series","American Truck Sim","SnowRunner","Dirt Rally" };
         static readonly string[] PROTOS = { "UDP :5300","HTTP :25555","UDP :20777","HTTP :25555","UDP :21777","UDP :20777" };
         static readonly string[] ICONS  = { "🏎","🚛","🏁","🚚","❄","🏔" };
@@ -93,7 +101,18 @@ namespace SHALLControl
                 _active = false; _plugin?.Stop();
                 await _seat.CenterAsync(); _seat.Dispose();
             };
-            _ = new UpdateService().CheckAndUpdateAsync();
+            _updateService = new UpdateService();
+            _updateService.UpdateAvailable += (ver, url) =>
+                BeginInvoke((Action)(() => ShowUpdateOverlay(ver, url)));
+            _updateService.DownloadProgress += (pct, recv, total) =>
+                BeginInvoke((Action)(() => UpdateProgress(pct, recv, total)));
+            _updateService.StatusChanged += (msg) =>
+                BeginInvoke((Action)(() => UpdateStatusText(msg)));
+            _updateService.UpdateFailed += (msg) =>
+                BeginInvoke((Action)(() => ShowUpdateError(msg)));
+            _updateService.UpdateCompleting += () =>
+                BeginInvoke((Action)(() => UpdateStatusText("Restarting…")));
+            _ = _updateService.CheckAndUpdateAsync();
         }
 
         // ================================================================
@@ -196,6 +215,8 @@ namespace SHALLControl
             };
 
             _lblLog = new Label { Dock=DockStyle.Bottom, Height=26, Text="Ready — Select a game and connect", BackColor=Color.FromArgb(16,30,19), ForeColor=C_TEXT2, Font=new Font("Segoe UI",8.5f), TextAlign=ContentAlignment.MiddleLeft, Padding=new Padding(14,0,0,0) };
+            var lblVersion = new Label { Dock=DockStyle.Right, Width=100, Text="v" + Application.ProductVersion, BackColor=Color.Transparent, ForeColor=C_TEXT2, Font=new Font("Segoe UI",8.5f), TextAlign=ContentAlignment.MiddleRight, Padding=new Padding(0,0,14,0) };
+            _lblLog.Controls.Add(lblVersion);
 
             _homePanel = new Panel { Dock=DockStyle.Fill, BackColor=Color.Transparent };
             BuildHomePanel();
@@ -206,6 +227,10 @@ namespace SHALLControl
             content.Controls.Add(_homePanel);
             content.Controls.Add(_helpPanel);
             content.Controls.Add(_lblLog);
+
+            // Build the update overlay (hidden by default)
+            BuildUpdateOverlay(content);
+
             Controls.Add(content);
         }
 
@@ -357,6 +382,177 @@ namespace SHALLControl
                     try { var img=Image.FromFile(d.FileName); _gameImages[_selGame]=img; _cardImg[_selGame].Image=img; _cardImg[_selGame].Visible=true; _cards[_selGame].Invalidate(); Log("Image set."); }
                     catch(Exception ex){Log("Error: "+ex.Message);}
             }
+        }
+
+        // ================================================================
+        //  UPDATE OVERLAY
+        // ================================================================
+        private void BuildUpdateOverlay(Panel parent)
+        {
+            _updateOverlay = new Panel { Visible=false, BackColor=Color.FromArgb(180, 0, 0, 0) };
+            _updateOverlay.Dock = DockStyle.Fill;
+            SetDoubleBuffered(_updateOverlay);
+
+            // Card container (centered via Resize)
+            var card = new Panel { Size=new Size(480, 260), BackColor=Color.Transparent };
+            SetDoubleBuffered(card);
+            card.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, card.Width - 1, card.Height - 1);
+                using (var path = RoundRect(r, 18))
+                {
+                    using (var br = new LinearGradientBrush(r, Color.FromArgb(30, 44, 26), Color.FromArgb(18, 28, 16), 135f))
+                        g.FillPath(br, path);
+                    using (var br = new SolidBrush(Color.FromArgb(18, 255, 255, 255)))
+                        g.FillPath(br, path);
+                    using (var pen = new Pen(Color.FromArgb(120, C_ACCENT), 1.5f))
+                        g.DrawPath(pen, path);
+                }
+            };
+
+            // Title
+            _updateTitle = new Label { Text="Update Available", Location=new Point(28, 22), AutoSize=true, Font=new Font("Segoe UI", 15f, FontStyle.Bold), ForeColor=C_TEXT, BackColor=Color.Transparent };
+            card.Controls.Add(_updateTitle);
+
+            // Status
+            _updateStatus = new Label { Text="A new version is available.", Location=new Point(28, 58), Size=new Size(420, 22), Font=new Font("Segoe UI", 9.5f), ForeColor=C_TEXT2, BackColor=Color.Transparent };
+            card.Controls.Add(_updateStatus);
+
+            // Progress bar background
+            _updateProgressBg = new Panel { Location=new Point(28, 96), Size=new Size(424, 18), BackColor=Color.Transparent };
+            SetDoubleBuffered(_updateProgressBg);
+            _updateProgressBg.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var r = new Rectangle(0, 0, _updateProgressBg.Width - 1, _updateProgressBg.Height - 1);
+                using (var path = RoundRect(r, 9))
+                {
+                    using (var br = new SolidBrush(Color.FromArgb(80, 0, 0, 0)))
+                        g.FillPath(br, path);
+                    using (var pen = new Pen(Color.FromArgb(40, 255, 255, 255), 1f))
+                        g.DrawPath(pen, path);
+                }
+            };
+            _updateProgressBg.Visible = false;
+            card.Controls.Add(_updateProgressBg);
+
+            // Progress bar fill
+            _updateProgressFill = new Panel { Location=new Point(1, 1), Size=new Size(0, 16), BackColor=Color.Transparent };
+            SetDoubleBuffered(_updateProgressFill);
+            _updateProgressFill.Paint += (s, e) =>
+            {
+                var g = e.Graphics;
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                if (_updateProgressFill.Width < 8) return;
+                var r = new Rectangle(0, 0, _updateProgressFill.Width - 1, _updateProgressFill.Height - 1);
+                using (var path = RoundRect(r, 8))
+                {
+                    using (var br = new LinearGradientBrush(r, C_ACCENT, C_ACCENT2, 0f))
+                        g.FillPath(br, path);
+                    // Glassy highlight on top half
+                    var hlRect = new Rectangle(0, 0, _updateProgressFill.Width, _updateProgressFill.Height / 2);
+                    if (hlRect.Width > 0 && hlRect.Height > 0)
+                        using (var br = new LinearGradientBrush(new Rectangle(0, 0, _updateProgressFill.Width, _updateProgressFill.Height), Color.FromArgb(90, 255, 255, 255), Color.Transparent, System.Drawing.Drawing2D.LinearGradientMode.Vertical))
+                            g.FillPath(br, path);
+                }
+            };
+            _updateProgressBg.Controls.Add(_updateProgressFill);
+
+            // Percent label
+            _updatePercent = new Label { Text="0%", Location=new Point(28, 120), AutoSize=true, Font=new Font("Segoe UI", 9f, FontStyle.Bold), ForeColor=C_ACCENT, BackColor=Color.Transparent, Visible=false };
+            card.Controls.Add(_updatePercent);
+
+            // Install button
+            _btnInstall = MakeBtn("⬇  Install Update", new Rectangle(28, 160, 200, 48), C_ACCENT);
+            _btnInstall.ForeColor = Color.FromArgb(10, 30, 12);
+            _btnInstall.Click += async (s, e) =>
+            {
+                if (string.IsNullOrEmpty(_pendingDownloadUrl)) return;
+                _btnInstall.Enabled = false;
+                _btnInstall.Text = "Downloading…";
+                _btnDismiss.Visible = false;
+                _updateProgressBg.Visible = true;
+                _updatePercent.Visible = true;
+                await _updateService.PerformUpdateAsync(_pendingDownloadUrl);
+            };
+            card.Controls.Add(_btnInstall);
+
+            // Dismiss button
+            _btnDismiss = MakeBtn("Not Now", new Rectangle(248, 160, 140, 48), C_CARD_HI);
+            _btnDismiss.ForeColor = C_TEXT;
+            _btnDismiss.Click += (s, e) =>
+            {
+                _updateOverlay.Visible = false;
+                Log("Update skipped.");
+            };
+            card.Controls.Add(_btnDismiss);
+
+            _updateOverlay.Controls.Add(card);
+
+            // Center the card on resize
+            _updateOverlay.Resize += (s, e) =>
+            {
+                card.Location = new Point(
+                    (_updateOverlay.Width - card.Width) / 2,
+                    (_updateOverlay.Height - card.Height) / 2
+                );
+            };
+
+            parent.Controls.Add(_updateOverlay);
+            _updateOverlay.BringToFront();
+        }
+
+        private void ShowUpdateOverlay(string version, string downloadUrl)
+        {
+            _pendingDownloadUrl = downloadUrl;
+            _updateTitle.Text = "🔄  Update Available";
+            _updateStatus.Text = $"Version {version} is ready to install.";
+            _updateProgressBg.Visible = false;
+            _updatePercent.Visible = false;
+            _btnInstall.Enabled = true;
+            _btnInstall.Text = "⬇  Install Update";
+            _btnDismiss.Visible = true;
+            _updateOverlay.Visible = true;
+            Log($"Update {version} available.");
+        }
+
+        private void UpdateProgress(int percent, long received, long total)
+        {
+            int maxW = _updateProgressBg.Width - 2;
+            int fillW = Math.Max(0, Math.Min(maxW, (int)(maxW * percent / 100.0)));
+            _updateProgressFill.Width = fillW;
+            _updateProgressFill.Invalidate();
+
+            if (total > 0)
+            {
+                double mb = received / (1024.0 * 1024.0);
+                double totalMb = total / (1024.0 * 1024.0);
+                _updatePercent.Text = $"{percent}%  —  {mb:0.0} / {totalMb:0.0} MB";
+            }
+            else
+            {
+                _updatePercent.Text = $"{percent}%";
+            }
+        }
+
+        private void UpdateStatusText(string msg)
+        {
+            _updateStatus.Text = msg;
+            _btnInstall.Text = msg;
+            _btnInstall.Enabled = false;
+        }
+
+        private void ShowUpdateError(string msg)
+        {
+            _updateStatus.Text = msg;
+            _updateStatus.ForeColor = C_RED;
+            _btnInstall.Visible = false;
+            _btnDismiss.Text = "Close";
+            _btnDismiss.Visible = true;
+            Log(msg);
         }
     }
 }
