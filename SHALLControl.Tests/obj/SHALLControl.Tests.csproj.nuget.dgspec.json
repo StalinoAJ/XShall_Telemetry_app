@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "restore": {
+    "D:\\Gaming Chair\\SHALLControl.Tests\\SHALLControl.Tests.csproj": {}
+  },
+  "projects": {
+    "D:\\Gaming Chair\\SHALLControl.Tests\\SHALLControl.Tests.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "D:\\Gaming Chair\\SHALLControl.Tests\\SHALLControl.Tests.csproj",
+        "projectName": "SHALLControl.Tests",
+        "projectPath": "D:\\Gaming Chair\\SHALLControl.Tests\\SHALLControl.Tests.csproj",
+        "packagesPath": "C:\\Users\\Humanoid\\.nuget\\packages\\",
+        "outputPath": "D:\\Gaming Chair\\SHALLControl.Tests\\obj\\",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "C:\\Users\\Humanoid\\AppData\\Roaming\\NuGet\\NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net472"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net472": {
+            "targetAlias": "net472",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.300"
+      },
+      "frameworks": {
+        "net472": {
+          "targetAlias": "net472",
+          "dependencies": {
+            "MSTest": {
+              "target": "Package",
+              "version": "[3.6.4, )"
+            },
+            "Microsoft.NET.Test.Sdk": {
+              "target": "Package",
+              "version": "[17.12.0, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.313\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}
