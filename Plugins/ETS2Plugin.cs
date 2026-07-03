@@ -40,7 +40,6 @@ namespace SHALLControl.Plugins
         {
             if (_running) return;
             _running  = true;
-            _lastSpeed = 0;
             _thread = new Thread(Loop) { IsBackground = true, Name = "ETS2HTTP" };
             _thread.Start();
         }
