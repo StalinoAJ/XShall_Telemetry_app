@@ -21,6 +21,10 @@ namespace SHALLControl
         private DateTime _lastSend = DateTime.MinValue;
         private const int MIN_INTERVAL_MS = 50;  // max 20 Hz to seat
 
+        // Super Smooth EMA State
+        private double _emaPitch, _emaRoll, _emaYaw;
+        private bool _firstEma = true;
+
         public bool IsConnected { get; private set; }
         public string SeatIp => _ip;
 
@@ -96,6 +100,24 @@ namespace SHALLControl
             int roll  = Clamp(_rollWashout .Filter(rollSustained,  rollTransient),  cfg.MaxAngle);
             int yaw   = Clamp(_yawWashout  .Filter(0,              yawTransient),   cfg.MaxAngle);
 
+            if (cfg.SuperSmooth)
+            {
+                if (_firstEma) { _emaPitch = pitch; _emaRoll = roll; _emaYaw = yaw; _firstEma = false; }
+                
+                // 15% adjustment per frame = very heavy dampening for graceful movement
+                _emaPitch += (pitch - _emaPitch) * 0.15;
+                _emaRoll  += (roll  - _emaRoll)  * 0.15;
+                _emaYaw   += (yaw   - _emaYaw)   * 0.15;
+                
+                pitch = Clamp(_emaPitch, cfg.MaxAngle);
+                roll  = Clamp(_emaRoll,  cfg.MaxAngle);
+                yaw   = Clamp(_emaYaw,   cfg.MaxAngle);
+            }
+            else
+            {
+                _firstEma = true;
+            }
+
             LastPitch = pitch; LastRoll = roll; LastYaw = yaw;
 
             // Fire-and-forget (don't block the telemetry thread)
@@ -111,6 +133,7 @@ namespace SHALLControl
         public async Task CenterAsync()
         {
             _pitchWashout.Reset(); _rollWashout.Reset(); _yawWashout.Reset();
+            _firstEma = true;
             LastPitch = 0; LastRoll = 0; LastYaw = 0;
             try
             {

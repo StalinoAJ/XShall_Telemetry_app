@@ -245,7 +245,8 @@ namespace SHALLControl
                 RollScale = _trRoll.Value / 10f,
                 YawScale = _trYaw.Value / 10f,
                 MaxAngle = (int)_numMax.Value,
-                ExePath = _customGamePaths[_selGame]
+                ExePath = _customGamePaths[_selGame],
+                SuperSmooth = _isSuperSmooth
             };
             _plugin = _selGame switch
             {

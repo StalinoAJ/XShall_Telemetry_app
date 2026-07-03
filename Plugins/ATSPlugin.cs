@@ -30,7 +30,6 @@ namespace SHALLControl.Plugins
 
         private Thread _thread;
         private volatile bool _running;
-        private float _lastSpeed;
 
         public void Start()
         {
@@ -133,9 +132,6 @@ namespace SHALLControl.Plugins
             float placePitch = JsonNested(json, "placement", "pitch");
             float placeRoll  = JsonNested(json, "placement", "roll");
 
-            float speedDelta = speed - _lastSpeed;
-            _lastSpeed = speed;
-
             float absSpeed = Math.Abs(speed);
             if (absSpeed < 3f)
             {
@@ -151,7 +147,8 @@ namespace SHALLControl.Plugins
 
             return new TelemetryData
             {
-                Pitch  = -(speedDelta * 3f + pitchDeg * 2f),
+                // Rely on native longitudinal acceleration instead of speed delta
+                Pitch  = -(accelZ * 15f + pitchDeg * 2f),
                 Roll   = -(accelX * 35f + rollDeg * 10f),
                 Yaw    = -steer * 18f,
                 Surge  = accelZ,

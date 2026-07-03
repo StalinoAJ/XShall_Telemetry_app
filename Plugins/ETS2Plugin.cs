@@ -35,7 +35,6 @@ namespace SHALLControl.Plugins
 
         private Thread _thread;
         private volatile bool _running;
-        private float _lastSpeed;
 
         public void Start()
         {
@@ -153,9 +152,6 @@ namespace SHALLControl.Plugins
             float placePitch = JsonNested(json, "placement", "pitch");  // radians
             float placeRoll  = JsonNested(json, "placement", "roll");   // radians
 
-            float speedDelta = speed - _lastSpeed;
-            _lastSpeed = speed;
-
             // Speed deadzone — no motion below 3 km/h
             float absSpeed = Math.Abs(speed);
             if (absSpeed < 3f)
@@ -168,16 +164,13 @@ namespace SHALLControl.Plugins
             }
 
             // Combine acceleration + placement for better feel
-            // Funbit acceleration.x is very small (~0.02 normal, ~0.5 hard corner)
-            // placement.roll is in radians (tiny, ~0.001)
-            // gameSteer is -1 to 1 (full lock)
-            // → Need aggressive multipliers to get real seat movement
             float rollDeg  = (float)(placeRoll * 180.0 / Math.PI);
             float pitchDeg = (float)(placePitch * 180.0 / Math.PI);
 
             return new TelemetryData
             {
-                Pitch  = -(speedDelta * 3f + pitchDeg * 2f),     // brake/accel + road slope
+                // Rely on native longitudinal acceleration instead of speed delta
+                Pitch  = -(accelZ * 15f + pitchDeg * 2f),
                 Roll   = -(accelX * 35f + rollDeg * 10f),         // lateral G + body lean (boosted)
                 Yaw    = -steer * 18f,                             // steering wheel (boosted)
                 Surge  = accelZ,

@@ -34,6 +34,7 @@ namespace SHALLControl
         private bool _active;
         private TelemetryData _latest = TelemetryData.Zero;
         private int _currentTab = 0;
+        private bool _isSuperSmooth = false;
         private string[] _customGamePaths = new string[GAME_COUNT];
         private Image[]  _gameImages      = new Image[GAME_COUNT];
 
@@ -338,6 +339,18 @@ namespace SHALLControl
             _tuningPanel.Controls.Add(btnMinus);
             _tuningPanel.Controls.Add(lblAngle);
             _tuningPanel.Controls.Add(btnPlus);
+
+            y += 74;
+            var btnSmooth = MakeBtn("SUPER SMOOTH: OFF", new Rectangle(x, y, 306, 48), C_CARD_HI);
+            btnSmooth.ForeColor = C_TEXT;
+            btnSmooth.Click += (s, e) => 
+            {
+                _isSuperSmooth = !_isSuperSmooth;
+                btnSmooth.Text = _isSuperSmooth ? "SUPER SMOOTH: ON" : "SUPER SMOOTH: OFF";
+                btnSmooth.BackColor = _isSuperSmooth ? C_ACCENT : C_CARD_HI;
+                btnSmooth.ForeColor = _isSuperSmooth ? C_BG : C_TEXT;
+            };
+            _tuningPanel.Controls.Add(btnSmooth);
         }
 
         private void BuildTelemetryLabels()

@@ -14,5 +14,8 @@ namespace SHALLControl.Models
 
         // Safety clamp (max degrees sent to seat)
         public int MaxAngle      { get; set; } = 15;
+
+        // Apply heavy exponential moving average filter for truck sims
+        public bool SuperSmooth  { get; set; } = false;
     }
 }
