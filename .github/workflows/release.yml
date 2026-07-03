@@ -19,6 +19,16 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
+    - name: Update AssemblyInfo Version
+      run: |
+        $tag = $env:GITHUB_REF_NAME
+        if ($tag -match '^v?(\d+\.\d+\.\d+)') {
+            $version = $matches[1] + ".0"
+            $file = "Properties\AssemblyInfo.cs"
+            (Get-Content $file) -replace 'AssemblyVersion\(".*?"\)', "AssemblyVersion(`"$version`")" -replace 'AssemblyFileVersion\(".*?"\)', "AssemblyFileVersion(`"$version`")" | Set-Content $file
+            Write-Host "Updated AssemblyInfo.cs to $version"
+        }
+
     - name: Build with MSBuild
       run: msbuild SHALLControl.csproj /p:Configuration=Release
 
