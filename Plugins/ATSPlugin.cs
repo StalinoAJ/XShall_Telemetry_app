@@ -146,9 +146,10 @@ namespace SHALLControl.Plugins
 
             return new TelemetryData
             {
-                // Rely on native longitudinal acceleration instead of speed delta
-                Pitch  = -(accelZ * 15f + pitchDeg * 2f),
-                Roll   = -(accelX * 35f + rollDeg * 10f),
+                // Send only physical orientation to the transient filter. 
+                // G-forces (Surge/Sway) are sent separately to the sustained filter.
+                Pitch  = -(pitchDeg * 2f),
+                Roll   = -(rollDeg * 10f),
                 Yaw    = -steer * 18f,
                 Surge  = accelZ,
                 Sway   = accelX,

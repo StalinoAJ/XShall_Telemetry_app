@@ -104,10 +104,11 @@ namespace SHALLControl
             {
                 if (_firstEma) { _emaPitch = pitch; _emaRoll = roll; _emaYaw = yaw; _firstEma = false; }
                 
-                // 15% adjustment per frame = very heavy dampening for graceful movement
-                _emaPitch += (pitch - _emaPitch) * 0.15;
-                _emaRoll  += (roll  - _emaRoll)  * 0.15;
-                _emaYaw   += (yaw   - _emaYaw)   * 0.15;
+                // 30% adjustment per frame at 33Hz gives a ~250ms smooth curve
+                // which perfectly mimics a heavy truck suspension without feeling "laggy"
+                _emaPitch += (pitch - _emaPitch) * 0.30;
+                _emaRoll  += (roll  - _emaRoll)  * 0.30;
+                _emaYaw   += (yaw   - _emaYaw)   * 0.30;
                 
                 pitch = Clamp(_emaPitch, cfg.MaxAngle);
                 roll  = Clamp(_emaRoll,  cfg.MaxAngle);
